@@ -192,6 +192,10 @@ function generate(bot) {
     imports: platformPkg.imports,
     dependencies: sortedDeps,
     devDependencies: platformPkg.devDependencies,
+    // Carry dependency overrides (security pins) so the bot's `npm ci` resolves
+    // the same patched transitive versions as the platform — otherwise the image
+    // would rebuild vulnerable transitive deps (e.g. undici).
+    ...(platformPkg.overrides ? { overrides: platformPkg.overrides } : {}),
   };
 
   writeFileSync(join(dest, "package.json"), JSON.stringify(botPkg, null, 2) + "\n");
