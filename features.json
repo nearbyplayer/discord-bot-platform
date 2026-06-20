@@ -1,0 +1,11 @@
+{
+  "features": {
+    "loa": { "requires": [] },
+    "logs": { "requires": [] },
+    "pager": { "requires": [] },
+    "action": { "requires": [] },
+    "ingame": { "requires": [] },
+    "autolog": { "requires": ["ingame", "logs"] },
+    "watchlist": { "requires": ["ingame"] }
+  }
+}

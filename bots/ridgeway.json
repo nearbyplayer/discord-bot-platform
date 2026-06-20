@@ -1,0 +1,6 @@
+{
+  "name": "ridgeway",
+  "dest": "../ridgeway-automation/department-bot",
+  "image": "ghcr.io/ridgeway-automation/department-bot",
+  "features": ["loa", "logs", "pager", "action", "autolog", "watchlist"]
+}

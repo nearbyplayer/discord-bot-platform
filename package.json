@@ -1,0 +1,43 @@
+{
+  "name": "@nearbyplayer/discord-bot-platform",
+  "version": "0.1.0",
+  "description": "Monorepo for the Discord department-bot platform: base framework (src/core) + all features (src/features). Per-bot repos are generated from here by bin/sync-bot.mjs.",
+  "main": "src/core/bot.js",
+  "type": "module",
+  "author": "nearbyplayer",
+  "license": "ISC",
+  "scripts": {
+    "bot": "node --env-file=.env src/core/bot.js",
+    "deploy-commands": "node --env-file=.env src/core/deploy-commands.js",
+    "sync": "node bin/sync-bot.mjs",
+    "lint": "oxlint . && eslint .",
+    "lint:fix": "oxlint . --fix && eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check"
+  },
+  "imports": {
+    "#src/*": "./src/core/*.js",
+    "#db": "./src/core/db/index.js",
+    "#db/*": "./src/core/db/schemas/*.js",
+    "#modules/*": "./src/core/modules/*.js",
+    "#config": "./src/core/config.js",
+    "#features/*": "./src/features/*.js"
+  },
+  "dependencies": {
+    "@sentry/node": "^10.58.0",
+    "chalk": "^5.6.2",
+    "discord.js": "^14.25.1",
+    "luxon": "^3.6.1",
+    "mongoose": "^8.16.2",
+    "node-cron": "^4.2.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.1",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "globals": "^17.4.0",
+    "oxlint": "^1.51.0",
+    "prettier": "^3.8.1"
+  }
+}
