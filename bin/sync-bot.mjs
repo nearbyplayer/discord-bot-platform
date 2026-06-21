@@ -1,7 +1,7 @@
 /**
  * Bot Sync Manager
  * Materializes core + selected features into a per-bot git repo.
- * Usage (CLI):  node bin/sync-bot.mjs <name|all> [--commit] [--push]
+ * Usage (CLI):  node bin/sync-bot.mjs <name|all> [--commit] [--push] [--build] [--push-image]
  * Usage (TUI):  node bin/sync-bot.mjs
  */
 import chalk from "chalk";
@@ -19,6 +19,14 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const catalog = JSON.parse(readFileSync(join(ROOT, "features.json"), "utf8"));
 const platformPkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+
+// Feature-sets are pure aliases for a bundle of features; a set name must not
+// collide with a feature name, or expansion would be ambiguous.
+for (const setName of Object.keys(catalog.sets ?? {})) {
+  if (catalog.features[setName]) {
+    throw new Error(`feature-set "${setName}" collides with a feature of the same name`);
+  }
+}
 
 /** Load all bot manifests from bots/*.json */
 const bots = readdirSync(join(ROOT, "bots"))
@@ -58,14 +66,35 @@ const GENERATED_ROOT_FILES = [
 // ---------------------------------------------------------------------------
 
 /**
+ * Expands any feature-set names in `selected` into their member features.
+ * Sets (declared in features.json `sets`) are pure aliases; members may be
+ * features or other sets. `path` tracks the current expansion chain to catch
+ * cycles while still allowing diamonds (a set referenced via two branches).
+ */
+function expandSets(selected, path = new Set()) {
+  const sets = catalog.sets ?? {};
+  const out = [];
+  for (const name of selected) {
+    if (!sets[name]) {
+      out.push(name);
+      continue;
+    }
+    if (path.has(name)) throw new Error(`feature-set cycle through "${name}"`);
+    out.push(...expandSets(sets[name], new Set([...path, name])));
+  }
+  return out;
+}
+
+/**
  * BFS over feature `requires` to return the full transitive closure of a
- * selected feature set, as a sorted array of feature names.
+ * selected feature set, as a sorted array of feature names. Feature-set
+ * aliases are expanded first, then dependencies are resolved.
  * Throws if any referenced feature name is not in the catalog.
  */
 function resolveClosure(selected) {
   const known = catalog.features;
   const visited = new Set();
-  const queue = [...selected];
+  const queue = expandSets(selected);
 
   while (queue.length > 0) {
     const name = queue.shift();
@@ -102,7 +131,7 @@ function sourceUrl(image) {
 }
 
 // ---------------------------------------------------------------------------
-// generate(bot) — materialize core + features into the bot repo
+// generate(bot) - materialize core + features into the bot repo
 // ---------------------------------------------------------------------------
 
 /**
@@ -122,7 +151,7 @@ function generate(bot) {
 
   const dest = resolve(ROOT, bot.dest);
 
-  // The destination repo must already be cloned — we don't create it.
+  // The destination repo must already be cloned - we don't create it.
   if (!existsSync(dest)) {
     log.err(`bot repo must be cloned to ${dest} first`);
     return null;
@@ -175,7 +204,7 @@ function generate(bot) {
   const botPkg = {
     name: bot.name,
     version: "0.0.0",
-    description: `${bot.name} Discord bot — generated from the discord-bot-platform monorepo. Do not edit by hand.`,
+    description: `${bot.name} Discord bot - generated from the discord-bot-platform monorepo. Do not edit by hand.`,
     main: "src/core/bot.js",
     type: "module",
     private: true,
@@ -193,7 +222,7 @@ function generate(bot) {
     dependencies: sortedDeps,
     devDependencies: platformPkg.devDependencies,
     // Carry dependency overrides (security pins) so the bot's `npm ci` resolves
-    // the same patched transitive versions as the platform — otherwise the image
+    // the same patched transitive versions as the platform - otherwise the image
     // would rebuild vulnerable transitive deps (e.g. undici).
     ...(platformPkg.overrides ? { overrides: platformPkg.overrides } : {}),
   };
@@ -261,7 +290,7 @@ README.md
     join(dest, "README.md"),
     `# ${bot.name} bot
 
-> **Generated repository — do not edit by hand.**
+> **Generated repository - do not edit by hand.**
 > Source of truth: the \`discord-bot-platform\` monorepo. Regenerate with \`npm run sync -- ${bot.name}\`.
 > Synced from platform commit \`${sha}\`.
 
@@ -297,9 +326,30 @@ Entitled features: ${features.join(", ")}
  * Stages all changes, commits with a platform-sha message, and optionally
  * pushes. Each git step is wrapped in try/catch so a failure is reported
  * without crashing the process.
+ *
+ * If the bot repo's last commit already records this platform SHA (i.e. it was
+ * already synced from this exact platform commit), the git steps are skipped
+ * entirely - the caller still proceeds to any image build/push.
  */
 function commitAndPush(bot, dest, { push }) {
   const sha = platformSha();
+
+  // Skip when the repo is already at this platform commit: the would-be commit
+  // message (`...platform <sha>`) is already the last commit's. Do nothing here
+  // and let the caller continue (e.g. to push the image).
+  if (sha !== "unknown") {
+    try {
+      const lastMsg = execFileSync("git", ["-C", dest, "log", "-1", "--format=%s"], {
+        stdio: ["pipe", "pipe", "pipe"],
+      }).toString();
+      if (lastMsg.includes(sha)) {
+        log.info(`already synced from platform ${sha}; skipping commit`);
+        return;
+      }
+    } catch {
+      // No commits yet, or not a git repo - fall through to a normal commit.
+    }
+  }
 
   // Stage everything.
   try {
@@ -332,6 +382,50 @@ function commitAndPush(bot, dest, { push }) {
     log.ok("pushed");
   } catch (err) {
     log.err(`git push failed: ${err.message}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// buildImage(bot, dest, {push})
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the bot's Docker image from its generated repo (`dest` is the build
+ * context; the Dockerfile written by generate() lives there) and optionally
+ * pushes it. Tags both `<image>:latest` and `<image>:<platform-sha>` - the SHA
+ * tag is an immutable provenance pin matching the Dockerfile's
+ * `org.opencontainers.image.revision` label. Each docker step is wrapped in
+ * try/catch so a failure is reported without crashing the process. Does not run
+ * `docker login`; an auth failure on push is surfaced like any other error.
+ */
+function buildImage(bot, dest, { push }) {
+  const sha = platformSha();
+  const tags = [`${bot.image}:latest`];
+  if (sha !== "unknown") tags.push(`${bot.image}:${sha}`);
+
+  // Build once, applying every tag.
+  const buildArgs = ["build"];
+  for (const t of tags) buildArgs.push("-t", t);
+  buildArgs.push(dest);
+
+  try {
+    execFileSync("docker", buildArgs, { stdio: "inherit" });
+    log.ok(`built ${tags.join(", ")}`);
+  } catch (err) {
+    log.err(`docker build failed: ${err.message}`);
+    return;
+  }
+
+  if (!push) return;
+
+  // Push each tag independently so one failure doesn't hide the other.
+  for (const t of tags) {
+    try {
+      execFileSync("docker", ["push", t], { stdio: "inherit" });
+      log.ok(`pushed ${t}`);
+    } catch (err) {
+      log.err(`docker push failed for ${t}: ${err.message}`);
+    }
   }
 }
 
@@ -391,30 +485,48 @@ async function runTUI() {
       targets = [bots[idx]];
     }
 
-    // Ask what action to take.
+    // Ask the git action. Generate always runs; this only governs commit/push.
     console.log();
-    console.log(`  ${chalk.bold("1.")} Generate only`);
-    console.log(`  ${chalk.bold("2.")} Generate + commit`);
-    console.log(`  ${chalk.bold("3.")} Generate + commit + push`);
+    console.log(`  ${chalk.bold("Git action")}`);
+    console.log(`  ${chalk.bold("1.")} None`);
+    console.log(`  ${chalk.bold("2.")} Commit`);
+    console.log(`  ${chalk.bold("3.")} Commit + push`);
     console.log();
-    const action = (await prompt(rl, `  ${chalk.cyan("Select an action:")} `)).trim();
+    const gitAction = (await prompt(rl, `  ${chalk.cyan("Select a git action:")} `)).trim();
     console.log();
 
-    if (!["1", "2", "3"].includes(action)) {
-      log.err("Invalid action.");
+    if (!["1", "2", "3"].includes(gitAction)) {
+      log.err("Invalid git action.");
       await prompt(rl, `\n  ${chalk.dim("Press Enter to continue...")}`);
       continue;
     }
 
-    const doCommit = action === "2" || action === "3";
-    const doPush = action === "3";
+    // Ask the docker action (independent of the git action).
+    console.log(`  ${chalk.bold("Docker action")}`);
+    console.log(`  ${chalk.bold("1.")} None`);
+    console.log(`  ${chalk.bold("2.")} Build image`);
+    console.log(`  ${chalk.bold("3.")} Build + push`);
+    console.log();
+    const dockerAction = (await prompt(rl, `  ${chalk.cyan("Select a docker action:")} `)).trim();
+    console.log();
+
+    if (!["1", "2", "3"].includes(dockerAction)) {
+      log.err("Invalid docker action.");
+      await prompt(rl, `\n  ${chalk.dim("Press Enter to continue...")}`);
+      continue;
+    }
+
+    const doCommit = gitAction === "2" || gitAction === "3";
+    const doPush = gitAction === "3";
+    const doBuild = dockerAction === "2" || dockerAction === "3";
+    const doPushImage = dockerAction === "3";
 
     for (const bot of targets) {
       try {
         const result = generate(bot);
-        if (result && doCommit) {
-          commitAndPush(bot, result.dest, { push: doPush });
-        }
+        if (!result) continue;
+        if (doCommit) commitAndPush(bot, result.dest, { push: doPush });
+        if (doBuild) buildImage(bot, result.dest, { push: doPushImage });
       } catch (err) {
         log.err(`${bot.name}: ${err.message}`);
       }
@@ -425,14 +537,16 @@ async function runTUI() {
 }
 
 // ---------------------------------------------------------------------------
-// Entry point — CLI mode if args present, TUI otherwise
+// Entry point - CLI mode if args present, TUI otherwise
 // ---------------------------------------------------------------------------
 
 if (process.argv[2]) {
-  // Usage: node bin/sync-bot.mjs <name|all> [--commit] [--push]
+  // Usage: node bin/sync-bot.mjs <name|all> [--commit] [--push] [--build] [--push-image]
   const [, , target, ...flags] = process.argv;
   const doCommit = flags.includes("--commit") || flags.includes("--push");
   const doPush = flags.includes("--push"); // --push implies --commit
+  const doBuild = flags.includes("--build") || flags.includes("--push-image");
+  const doPushImage = flags.includes("--push-image"); // --push-image implies --build
 
   let targets;
   if (target === "all") {
@@ -449,9 +563,9 @@ if (process.argv[2]) {
   for (const bot of targets) {
     try {
       const result = generate(bot);
-      if (result && doCommit) {
-        commitAndPush(bot, result.dest, { push: doPush });
-      }
+      if (!result) continue;
+      if (doCommit) commitAndPush(bot, result.dest, { push: doPush });
+      if (doBuild) buildImage(bot, result.dest, { push: doPushImage });
     } catch (err) {
       log.err(`${bot.name}: ${err.message}`);
     }

@@ -2,7 +2,7 @@
  * Pager feature manifest.
  * Auto-discovered by the feature loader; contributes the /pager command, the
  * /config pager subcommand, and its own settings fields.
- * Pagers have no database records — they live entirely in guild settings.
+ * Pagers have no database records - they live entirely in guild settings.
  */
 import command from "./command.js";
 import config from "./config.js";

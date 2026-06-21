@@ -35,7 +35,7 @@ export default class ErrorHandler {
       await this.sendErrorReply(interaction, error.message);
     } else if (error instanceof DiscordAPIError) {
       // Routine Discord API failures (expired interactions, missing permissions,
-      // deleted channels/messages) — console only, never Sentry.
+      // deleted channels/messages) - console only, never Sentry.
       captureException(error, { ...errorContext, code: error.code });
 
       // The interaction token is dead; no reply is possible.

@@ -2,7 +2,7 @@ import { ChannelType, SlashCommandSubcommandBuilder } from "discord.js";
 
 /**
  * Action configuration fragment. The base `/config` assembler appends this
- * subcommand and routes `/config action` here — the base never names action.
+ * subcommand and routes `/config action` here - the base never names action.
  */
 export default {
   subcommand: new SlashCommandSubcommandBuilder()
@@ -35,7 +35,7 @@ export default {
     if (iaAcronym !== null) updates.push(["ia_acronym", iaAcronym]);
 
     if (!updates.length) {
-      await i.editReply("Nothing to update — provide a channel and/or IA acronym.");
+      await i.editReply("Nothing to update - provide a channel and/or IA acronym.");
       return;
     }
 

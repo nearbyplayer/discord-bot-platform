@@ -52,7 +52,7 @@ export async function execute(client) {
       const embeds = pagedEmbed(embed, fields);
       await channel.send({ embeds }).catch(() => {});
     } catch (e) {
-      // Config errors (e.g. deleted watchlist channel) recur every run — console only.
+      // Config errors (e.g. deleted watchlist channel) recur every run - console only.
       captureException(
         e,
         { module: "watchlist", function: "execute", guild_id: guild.id },

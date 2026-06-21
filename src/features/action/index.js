@@ -2,7 +2,7 @@
  * Action feature manifest.
  * Auto-discovered by the feature loader; contributes the /action command and
  * the /config action subcommand. Action has no database records, no buttons,
- * and no schedules — it lives entirely in settings and command logic.
+ * and no schedules - it lives entirely in settings and command logic.
  */
 import command from "./command.js";
 import config from "./config.js";

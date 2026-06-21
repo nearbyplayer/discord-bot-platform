@@ -2,7 +2,7 @@ import { ChannelType, SlashCommandSubcommandBuilder } from "discord.js";
 
 /**
  * LOA configuration fragment. The base `/config` assembler appends this
- * subcommand and routes `/config loa` here — the base never names LOA.
+ * subcommand and routes `/config loa` here - the base never names LOA.
  */
 export default {
   subcommand: new SlashCommandSubcommandBuilder()
@@ -35,7 +35,7 @@ export default {
     if (role) updates.push(["loa.role", role.id]);
 
     if (!updates.length) {
-      await i.editReply("Nothing to update — provide a channel and/or role.");
+      await i.editReply("Nothing to update - provide a channel and/or role.");
       return;
     }
 

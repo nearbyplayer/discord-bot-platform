@@ -141,7 +141,7 @@ export default {
 
     if (!quota) {
       return i.editReply(
-        `Your log started at <t:${Math.floor(start.valueOf() / 1000)}:T>. Your quota could not be determined — use \`/autolog end\` to submit or \`/autolog cancel\` to cancel.`,
+        `Your log started at <t:${Math.floor(start.valueOf() / 1000)}:T>. Your quota could not be determined - use \`/autolog end\` to submit or \`/autolog cancel\` to cancel.`,
       );
     }
 

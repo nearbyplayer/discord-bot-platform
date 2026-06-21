@@ -1,7 +1,7 @@
 /**
  * Deploy Commands Manager
  * Reads BOT_TOKEN and CLIENT_ID from environment (via .env in the bot's root).
- * Commands are loaded from <cwd>/src/core/commands — run this from the bot's root directory.
+ * Commands are loaded from <cwd>/src/core/commands - run this from the bot's root directory.
  */
 import { REST } from "@discordjs/rest";
 import chalk from "chalk";

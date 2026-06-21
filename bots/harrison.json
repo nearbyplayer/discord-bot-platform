@@ -1,6 +1,6 @@
 {
   "name": "harrison",
   "dest": "../harrison-automation/department-bot",
-  "image": "ghcr.io/harrison-automation/department-bot",
+  "image": "ghcr.io/harrison-county-bots/department-bot",
   "features": ["loa", "logs", "pager", "action"]
 }

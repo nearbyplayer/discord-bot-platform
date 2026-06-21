@@ -1,6 +1,6 @@
 # discord-bot-platform
 
-A monorepo for a family of Discord department-management bots. This is the single source of truth for all bot logic: `src/core/` provides a portable base framework, and `src/features/` contains every feature that bots can opt into. Per-bot repositories (e.g., ridgeway-automation, harrison-automation) are *generated* from this monorepo by `bin/sync-bot.mjs` and must never be hand-edited—all changes flow back here, then re-sync into generated repos.
+A monorepo for a family of Discord department-management bots. This is the single source of truth for all bot logic: `src/core/` provides a portable base framework, and `src/features/` contains every feature that bots can opt into. Per-bot repositories (e.g., ridgeway-automation, harrison-county-bots) are *generated* from this monorepo by `bin/sync-bot.mjs` and must never be hand-edited; all changes flow back here, then re-sync into generated repos.
 
 ## Layout
 

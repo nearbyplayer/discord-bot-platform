@@ -2,7 +2,7 @@ import { ChannelType, SlashCommandSubcommandBuilder } from "discord.js";
 
 /**
  * Logs configuration fragment. The base `/config` assembler appends this
- * subcommand and routes `/config logs` here — the base never names logs.
+ * subcommand and routes `/config logs` here - the base never names logs.
  */
 export default {
   subcommand: new SlashCommandSubcommandBuilder()
@@ -27,7 +27,7 @@ export default {
     if (channel) updates.push(["logs.channel", channel.id]);
 
     if (!updates.length) {
-      await i.editReply("Nothing to update — provide a channel.");
+      await i.editReply("Nothing to update - provide a channel.");
       return;
     }
 

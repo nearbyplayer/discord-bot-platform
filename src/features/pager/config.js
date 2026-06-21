@@ -2,7 +2,7 @@ import { ChannelType, SlashCommandSubcommandBuilder } from "discord.js";
 
 /**
  * Pager configuration fragment. The base `/config` assembler appends this
- * subcommand and routes `/config pager` here — the base never names pager.
+ * subcommand and routes `/config pager` here - the base never names pager.
  */
 export default {
   subcommand: new SlashCommandSubcommandBuilder()

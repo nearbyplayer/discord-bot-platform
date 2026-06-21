@@ -60,7 +60,7 @@ async function checkActive(client, start) {
           log.last_active = DateTime.now().toISO();
           await log.save().catch(e => {
             // The active log can be deleted concurrently (submit/cancel) between
-            // the find above and this save — a benign race, not an error.
+            // the find above and this save - a benign race, not an error.
             if (e.name !== "VersionError" && e.name !== "DocumentNotFoundError") throw e;
           });
         }

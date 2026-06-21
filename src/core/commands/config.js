@@ -8,7 +8,7 @@ const BASE_SUBCOMMANDS = new Set(["reload", "init", "edit", "roles"]);
 
 /**
  * Build the `/config` command, appending each feature's contributed config
- * subcommand. The base never names a feature — it iterates `config` fragments.
+ * subcommand. The base never names a feature - it iterates `config` fragments.
  * @param {Array<{ config?: { subcommand: import('discord.js').SlashCommandSubcommandBuilder } }>} [features]
  * @returns {SlashCommandBuilder}
  */
@@ -90,7 +90,7 @@ function build(features = []) {
     .setContexts(InteractionContextType.Guild);
 
   // Append feature-contributed config subcommands. The base stays domain-free:
-  // it knows nothing about loa/logs/etc — only that a feature may supply one.
+  // it knows nothing about loa/logs/etc - only that a feature may supply one.
   for (const feature of features) {
     if (feature.config?.subcommand) data.addSubcommand(feature.config.subcommand);
   }
