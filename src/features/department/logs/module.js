@@ -6,7 +6,6 @@ import { DateTime } from "luxon";
 import { isValidObjectId } from "mongoose";
 
 // Modules
-import Permissions from "#modules/Permissions";
 import {
   clearReply,
   confirmAction,
@@ -833,7 +832,7 @@ export default {
 
     if (!log) throw new ValidationError(`No log was found with an ID of \`${_id}\`.`);
 
-    if (log.discord_id !== i.member.id && !Permissions.has(i.member, "command"))
+    if (log.discord_id !== i.member.id && !i.client.permissions.has(i.member, "command"))
       throw new ValidationError("You do not have permission to delete other users logs.");
 
     const settings = i.client.settings.get(i.guild);

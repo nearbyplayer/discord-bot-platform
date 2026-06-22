@@ -1,12 +1,22 @@
 {
+  "capabilities": {
+    "db": { "requires": [] },
+    "settings": { "requires": ["db"] },
+    "permissions": { "requires": [] }
+  },
   "features": {
-    "loa": { "requires": [] },
-    "logs": { "requires": [] },
-    "pager": { "requires": [] },
-    "action": { "requires": [] },
+    "department": {
+      "requires": ["permissions", "settings"],
+      "subfeatures": {
+        "loa": { "requires": [] },
+        "logs": { "requires": [] },
+        "pager": { "requires": [] },
+        "action": { "requires": [] }
+      }
+    },
     "ingame": { "requires": [] },
-    "autolog": { "requires": ["ingame", "logs"] },
-    "watchlist": { "requires": ["ingame"] }
+    "autolog": { "requires": ["ingame", "department/logs"] },
+    "watchlist": { "requires": ["ingame", "department"] }
   },
   "sets": {
     "ingame-suite": ["autolog", "watchlist"]

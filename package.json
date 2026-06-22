@@ -17,9 +17,9 @@
   },
   "imports": {
     "#src/*": "./src/core/*.js",
-    "#db": "./src/core/db/index.js",
-    "#db/*": "./src/core/db/schemas/*.js",
+    "#db": "./src/core/capabilities/db/connection.js",
     "#modules/*": "./src/core/modules/*.js",
+    "#capabilities/*": "./src/core/capabilities/*.js",
     "#config": "./src/core/config.js",
     "#features/*": "./src/features/*.js"
   },

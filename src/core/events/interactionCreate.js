@@ -1,7 +1,6 @@
 import { Collection, Events, MessageFlags } from "discord.js";
 // Modules
 import ErrorHandler from "#modules/ErrorHandler";
-import Permissions from "#modules/Permissions";
 import { clearReply } from "#modules/Util";
 
 /**
@@ -39,18 +38,18 @@ export default client => {
 
     if (!command) return interaction.editReply("That command hasn't been set up yet.");
 
-    if (
-      interaction.client.settings &&
-      command.data.name !== "config" &&
-      !interaction.client.settings.has(interaction.guild)
-    ) {
-      return interaction.editReply("This guild has not been initialized yet.");
+    // Interaction gates — preconditions registered by capabilities/features
+    // (e.g. the settings capability's guild-init check). First non-null message blocks.
+    for (const gate of interaction.client.gates ?? []) {
+      const block = await gate(interaction, command);
+      if (block) return interaction.editReply(block);
     }
 
-    if (command.permissions) {
-      const requiredLevel = Permissions.checkSubcommandPermission(command, interaction);
-      if (requiredLevel && !Permissions.has(interaction.member, requiredLevel)) {
-        return interaction.editReply(Permissions.getPermissionError(requiredLevel));
+    const permissions = interaction.client.permissions;
+    if (command.permissions && permissions) {
+      const requiredLevel = permissions.checkSubcommandPermission(command, interaction);
+      if (requiredLevel && !permissions.has(interaction.member, requiredLevel)) {
+        return interaction.editReply(permissions.getPermissionError(requiredLevel));
       }
     }
 

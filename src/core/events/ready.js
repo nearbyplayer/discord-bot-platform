@@ -7,20 +7,36 @@ import { pathToFileURL } from "node:url";
 
 // Modules
 import { captureException } from "#modules/Sentry";
-import Settings from "#modules/Settings";
 
 /**
  * Bot initialization on ready event.
- * Loads guild settings and commands from filesystem.
+ * Runs data migrations, initializes capabilities (db/settings/permissions),
+ * then loads schedules and commands from the kernel plus every manifest.
  */
 export default client => {
   client.once(Events.ClientReady, async () => {
     console.clear();
     console.log(`Logged in as ${client.user.tag}!`);
 
-    // Load guild settings from database
-    client.settings = new Settings(client);
-    await client.settings.initialize();
+    const capabilities = client.capabilities ?? [];
+    const features = client.features ?? [];
+    const manifests = [...capabilities, ...features];
+
+    // Run data migrations once, before settings load, so relocated fields are
+    // read from their new paths. The kernel owns this seam, so migrations run
+    // regardless of which capabilities are present.
+    for (const manifest of manifests) {
+      if (typeof manifest.migrate === "function") await manifest.migrate();
+    }
+
+    // Initialize capabilities in load order (db -> permissions -> settings).
+    // Their init hooks fill the kernel seams: db registers teardown, permissions
+    // registers the resolver (role lookup is lazy, so it needs no settings yet),
+    // settings builds the model + cache and pushes the guild-init gate. A
+    // capability failing to init is fatal.
+    for (const capability of capabilities) {
+      if (typeof capability.init === "function") await capability.init(client);
+    }
 
     // Register a schedule descriptor { name, schedule, runOnStart, execute }.
     // An error escaping a schedule must not become an unhandled rejection and kill the bot.
@@ -51,10 +67,10 @@ export default client => {
       }
     }
 
-    // Register feature-provided schedules
-    for (const feature of client.features ?? []) {
-      for (const descriptor of feature.schedules ?? []) {
-        await registerSchedule(descriptor, feature.name);
+    // Register manifest-provided schedules (capabilities + features)
+    for (const manifest of manifests) {
+      for (const descriptor of manifest.schedules ?? []) {
+        await registerSchedule(descriptor, manifest.name);
       }
     }
 
@@ -62,12 +78,12 @@ export default client => {
     client.cooldowns = new Collection();
 
     // Register a command into the collection, validating its shape.
-    // A command may export `build(features)` instead of a static `data` when its
-    // shape depends on the loaded features (e.g. the config assembler). The base
-    // resolves it generically here without knowing which command opts in.
+    // A command may export `build(manifests)` instead of a static `data` when its
+    // shape depends on the loaded manifests (e.g. the /config assembler). The
+    // kernel resolves it generically here without knowing which command opts in.
     const registerCommand = (command, label) => {
       if (command && typeof command.build === "function" && !command.data) {
-        command.data = command.build(client.features ?? []);
+        command.data = command.build(manifests);
       }
       if (command && "data" in command && "execute" in command) {
         client.commands.set(command.data.name, command);
@@ -79,25 +95,27 @@ export default client => {
       }
     };
 
-    // Dynamically load all commands from src/core/commands
-    const commandsPath = join(process.cwd(), "src", "core", "commands");
-    const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith(".js"));
     client.commands = new Collection();
 
-    for (const file of commandFiles) {
-      const { default: command } = await import(pathToFileURL(join(commandsPath, file)).href);
-      registerCommand(command, file);
-    }
-
-    // Register feature-provided commands
-    for (const feature of client.features ?? []) {
-      for (const command of feature.commands ?? []) {
-        registerCommand(command, feature.name);
+    // Load kernel commands from src/core/commands (the kernel may ship none).
+    const commandsPath = join(process.cwd(), "src", "core", "commands");
+    if (existsSync(commandsPath)) {
+      const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith(".js"));
+      for (const file of commandFiles) {
+        const { default: command } = await import(pathToFileURL(join(commandsPath, file)).href);
+        registerCommand(command, file);
       }
     }
 
-    // Run feature one-time init hooks (settings + commands are ready).
-    for (const feature of client.features ?? []) {
+    // Register manifest-provided commands (capabilities + features)
+    for (const manifest of manifests) {
+      for (const command of manifest.commands ?? []) {
+        registerCommand(command, manifest.name);
+      }
+    }
+
+    // Run feature one-time init hooks (capabilities already initialized above).
+    for (const feature of features) {
       if (typeof feature.init === "function") {
         try {
           await feature.init(client);

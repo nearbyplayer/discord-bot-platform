@@ -6,9 +6,9 @@
  */
 import chalk from "chalk";
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +25,18 @@ const platformPkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"))
 for (const setName of Object.keys(catalog.sets ?? {})) {
   if (catalog.features[setName]) {
     throw new Error(`feature-set "${setName}" collides with a feature of the same name`);
+  }
+}
+
+// Capabilities and features share the `requires` namespace, so their names must
+// be distinct (and must not collide with a set name) for closure resolution to
+// be unambiguous.
+for (const capName of Object.keys(catalog.capabilities ?? {})) {
+  if (catalog.features[capName]) {
+    throw new Error(`capability "${capName}" collides with a feature of the same name`);
+  }
+  if (catalog.sets?.[capName]) {
+    throw new Error(`capability "${capName}" collides with a feature-set of the same name`);
   }
 }
 
@@ -86,28 +98,77 @@ function expandSets(selected, path = new Set()) {
 }
 
 /**
- * BFS over feature `requires` to return the full transitive closure of a
- * selected feature set, as a sorted array of feature names. Feature-set
- * aliases are expanded first, then dependencies are resolved.
- * Throws if any referenced feature name is not in the catalog.
+ * Build the dependency graph over capabilities, features, and subfeatures.
+ * Features and capabilities share one `requires` namespace. A subfeature is
+ * keyed by its canonical "<parent>/<sub>" name and implicitly requires its
+ * parent feature, so selecting a subfeature always pulls in its parent.
+ */
+function buildDepGraph() {
+  const graph = {};
+  for (const [name, def] of Object.entries(catalog.capabilities ?? {})) {
+    graph[name] = { kind: "capability", requires: def.requires ?? [] };
+  }
+  for (const [name, def] of Object.entries(catalog.features)) {
+    graph[name] = { kind: "feature", requires: def.requires ?? [] };
+    for (const [sub, subDef] of Object.entries(def.subfeatures ?? {})) {
+      graph[`${name}/${sub}`] = {
+        kind: "subfeature",
+        parent: name,
+        requires: [name, ...(subDef.requires ?? [])],
+      };
+    }
+  }
+  return graph;
+}
+
+const depGraph = buildDepGraph();
+
+/**
+ * Expand a selected list into resolvable graph-node names: feature-set aliases
+ * are expanded first, then a bare parent-feature name expands to the parent plus
+ * ALL its subfeatures ("residency" => parent + every "residency/<sub>"). A
+ * "<parent>/<sub>" name is kept as-is (its parent is pulled via the graph).
+ */
+function expandSelection(selected) {
+  const out = [];
+  for (const name of expandSets(selected)) {
+    out.push(name);
+    const subs = catalog.features[name]?.subfeatures;
+    if (subs) for (const sub of Object.keys(subs)) out.push(`${name}/${sub}`);
+  }
+  return out;
+}
+
+/**
+ * BFS over the dependency graph to return the full transitive closure of a
+ * selected set, partitioned into sorted `capabilities`, `features`, and
+ * `subfeatures` (canonical "<parent>/<sub>" names). Throws on unknown names.
  */
 function resolveClosure(selected) {
-  const known = catalog.features;
   const visited = new Set();
-  const queue = expandSets(selected);
+  const queue = expandSelection(selected);
 
   while (queue.length > 0) {
     const name = queue.shift();
     if (visited.has(name)) continue;
-    if (!known[name]) throw new Error(`unknown feature "${name}"`);
+    if (!depGraph[name]) {
+      throw new Error(`unknown feature, subfeature, or capability "${name}"`);
+    }
     visited.add(name);
-    for (const dep of known[name].requires ?? []) {
+    for (const dep of depGraph[name].requires) {
       if (!visited.has(dep)) queue.push(dep);
     }
   }
 
-  return [...visited].sort();
+  const byKind = kind => [...visited].filter(n => depGraph[n].kind === kind).sort();
+  return {
+    capabilities: byKind("capability"),
+    features: byKind("feature"),
+    subfeatures: byKind("subfeature"),
+  };
 }
+
+export { resolveClosure };
 
 /**
  * Returns the short HEAD commit SHA of the platform repo, or "unknown" on
@@ -139,13 +200,29 @@ function sourceUrl(image) {
  * Returns { dest, features } on success, or null if the destination is missing.
  */
 function generate(bot) {
-  const features = resolveClosure(bot.features);
+  const { features, capabilities, subfeatures } = resolveClosure(bot.features);
 
-  // Verify every feature directory exists in the platform before touching anything.
+  // Selected subfeatures grouped by parent, for the selective copy below.
+  const selectedSubsByParent = {};
+  for (const full of subfeatures) {
+    const [parent, sub] = full.split("/");
+    (selectedSubsByParent[parent] ??= []).push(sub);
+  }
+
+  // Verify every feature/subfeature/capability directory exists before touching anything.
   for (const f of features) {
-    const featureSrc = join(ROOT, "src", "features", f);
-    if (!existsSync(featureSrc)) {
-      throw new Error(`feature directory not found: ${featureSrc}`);
+    if (!existsSync(join(ROOT, "src", "features", f))) {
+      throw new Error(`feature directory not found: src/features/${f}`);
+    }
+  }
+  for (const full of subfeatures) {
+    if (!existsSync(join(ROOT, "src", "features", ...full.split("/")))) {
+      throw new Error(`subfeature directory not found: src/features/${full}`);
+    }
+  }
+  for (const c of capabilities) {
+    if (!existsSync(join(ROOT, "src", "core", "capabilities", c))) {
+      throw new Error(`capability directory not found: src/core/capabilities/${c}`);
     }
   }
 
@@ -171,12 +248,39 @@ function generate(bot) {
   }
 
   // ------------------------------------------------------------------
-  // COPY: core source, entitled features, and standard config files.
+  // COPY: kernel source (everything in src/core EXCEPT the capability tier),
+  // then only the entitled capabilities, entitled features, and config files.
   // ------------------------------------------------------------------
-  cpSync(join(ROOT, "src", "core"), join(dest, "src", "core"), { recursive: true });
+  const capabilitiesDir = join(ROOT, "src", "core", "capabilities");
+  cpSync(join(ROOT, "src", "core"), join(dest, "src", "core"), {
+    recursive: true,
+    filter: src => src !== capabilitiesDir && !src.startsWith(capabilitiesDir + sep),
+  });
+
+  for (const c of capabilities) {
+    cpSync(join(capabilitiesDir, c), join(dest, "src", "core", "capabilities", c), {
+      recursive: true,
+    });
+  }
 
   for (const f of features) {
-    cpSync(join(ROOT, "src", "features", f), join(dest, "src", "features", f), { recursive: true });
+    const featureSrc = join(ROOT, "src", "features", f);
+    const featureDest = join(dest, "src", "features", f);
+    const declaredSubs = Object.keys(catalog.features[f].subfeatures ?? {});
+
+    if (declaredSubs.length === 0) {
+      cpSync(featureSrc, featureDest, { recursive: true });
+      continue;
+    }
+
+    // Parent feature with subfeatures: copy the parent (index.js, lib/, etc.) but
+    // only the selected subfeature subdirectories; unselected ones are excluded.
+    const selected = selectedSubsByParent[f] ?? [];
+    const excluded = declaredSubs.filter(s => !selected.includes(s)).map(s => join(featureSrc, s));
+    cpSync(featureSrc, featureDest, {
+      recursive: true,
+      filter: src => !excluded.some(ex => src === ex || src.startsWith(ex + sep)),
+    });
   }
 
   for (const f of STANDARD_FILES) {
@@ -188,15 +292,51 @@ function generate(bot) {
   // WRITE package.json
   // ------------------------------------------------------------------
 
-  // Merge platform deps with any feature-specific deps, then sort keys.
-  const mergedDeps = { ...platformPkg.dependencies };
-  for (const f of features) {
-    const featurePkgPath = join(ROOT, "src", "features", f, "package.json");
-    if (existsSync(featurePkgPath)) {
-      const featurePkg = JSON.parse(readFileSync(featurePkgPath, "utf8"));
-      Object.assign(mergedDeps, featurePkg.dependencies ?? {});
+  // Dependency assembly. Capabilities and features may each declare their own
+  // dependencies in a package.json; those are "module-owned". The kernel dep set
+  // is the platform's deps MINUS every module-owned dep, so a dep like mongoose
+  // (owned by the db capability) ships only to bots that entitle it.
+  const readDeps = pkgPath =>
+    existsSync(pkgPath) ? (JSON.parse(readFileSync(pkgPath, "utf8")).dependencies ?? {}) : {};
+
+  const capabilityDeps = Object.fromEntries(
+    Object.keys(catalog.capabilities ?? {}).map(c => [
+      c,
+      readDeps(join(ROOT, "src", "core", "capabilities", c, "package.json")),
+    ]),
+  );
+  const featureDeps = Object.fromEntries(
+    Object.keys(catalog.features).map(f => [
+      f,
+      readDeps(join(ROOT, "src", "features", f, "package.json")),
+    ]),
+  );
+  const subfeatureDeps = {};
+  for (const [name, def] of Object.entries(catalog.features)) {
+    for (const sub of Object.keys(def.subfeatures ?? {})) {
+      subfeatureDeps[`${name}/${sub}`] = readDeps(
+        join(ROOT, "src", "features", name, sub, "package.json"),
+      );
     }
   }
+
+  const moduleOwnedDepNames = new Set(
+    [
+      ...Object.values(capabilityDeps),
+      ...Object.values(featureDeps),
+      ...Object.values(subfeatureDeps),
+    ].flatMap(d => Object.keys(d)),
+  );
+
+  // Kernel deps: platform deps not claimed by any capability/feature/subfeature.
+  const mergedDeps = Object.fromEntries(
+    Object.entries(platformPkg.dependencies).filter(([name]) => !moduleOwnedDepNames.has(name)),
+  );
+  // Layer in deps for the entitled capabilities, features, and subfeatures.
+  for (const c of capabilities) Object.assign(mergedDeps, capabilityDeps[c]);
+  for (const f of features) Object.assign(mergedDeps, featureDeps[f]);
+  for (const s of subfeatures) Object.assign(mergedDeps, subfeatureDeps[s]);
+
   const sortedDeps = Object.fromEntries(
     Object.entries(mergedDeps).sort(([a], [b]) => a.localeCompare(b)),
   );
@@ -295,10 +435,12 @@ README.md
 > Synced from platform commit \`${sha}\`.
 
 Entitled features: ${features.join(", ")}
+Entitled subfeatures: ${subfeatures.join(", ") || "none"}
+Entitled capabilities: ${capabilities.join(", ") || "none"}
 
 ## Run
 
-1. Create \`.env\` with \`BOT_TOKEN\`, \`CLIENT_ID\`, \`MONGO\`, plus any feature env (e.g. \`GAME_NAME\`/\`GAME_ID\`, \`AUTO_LOG_API_URL\`).
+1. Create \`.env\` with \`BOT_TOKEN\`, \`CLIENT_ID\`${capabilities.includes("db") ? ", `MONGO`" : ""}, plus any feature env (e.g. \`GAME_NAME\`/\`GAME_ID\`, \`AUTO_LOG_API_URL\`).
 2. \`npm ci && npm run bot\`, or build the image: \`docker build -t ${bot.image}:latest .\`
 3. Register slash commands once: \`npm run deploy-commands -- global update\`.
 `,
@@ -314,8 +456,10 @@ Entitled features: ${features.join(", ")}
     log.warn("couldn't regenerate lockfile; run npm install in the bot repo");
   }
 
-  log.ok(`${bot.name} → ${dest}  (${features.length} features: ${features.join(", ")})`);
-  return { dest, features };
+  log.ok(
+    `${bot.name} → ${dest}  (caps: ${capabilities.join(", ") || "none"}; features: ${features.join(", ")}${subfeatures.length ? `; subfeatures: ${subfeatures.join(", ")}` : ""})`,
+  );
+  return { dest, features, capabilities, subfeatures };
 }
 
 // ---------------------------------------------------------------------------
@@ -448,7 +592,7 @@ function printMenu(botList) {
     // Show the resolved feature count (closure, not just the manifest list).
     let count;
     try {
-      count = resolveClosure(b.features).length;
+      count = resolveClosure(b.features).features.length;
     } catch {
       count = "?";
     }
@@ -537,10 +681,13 @@ async function runTUI() {
 }
 
 // ---------------------------------------------------------------------------
-// Entry point - CLI mode if args present, TUI otherwise
+// Entry point - CLI mode if args present, TUI otherwise. Guarded so the module
+// can be imported (e.g. by tests) without running the CLI/TUI.
 // ---------------------------------------------------------------------------
 
-if (process.argv[2]) {
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMain && process.argv[2]) {
   // Usage: node bin/sync-bot.mjs <name|all> [--commit] [--push] [--build] [--push-image]
   const [, , target, ...flags] = process.argv;
   const doCommit = flags.includes("--commit") || flags.includes("--push");
@@ -572,6 +719,6 @@ if (process.argv[2]) {
   }
 
   process.exit(0);
-} else {
+} else if (isMain) {
   await runTUI();
 }

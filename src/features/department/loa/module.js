@@ -1,7 +1,7 @@
 import LoaSchema from "./schema.js";
-import Permissions from "#modules/Permissions";
+import { postToDeptLog } from "../lib/dept.js";
 import { captureException } from "#modules/Sentry";
-import { clearReply, postToDeptLog, sendUserDM } from "#modules/Util";
+import { clearReply, sendUserDM } from "#modules/Util";
 import { ConfigError, DatabaseError, ValidationError } from "#src/errors";
 import {
   ActionRowBuilder,
@@ -320,7 +320,7 @@ export default class LeaveOfAbsence {
     const target = interaction.options.getUser("target") ?? interaction.user;
 
     if (target.id !== interaction.user.id) {
-      Permissions.require(
+      interaction.client.permissions.require(
         interaction.member,
         "command",
         "You need to be Command to cancel someone's LOA.",
@@ -394,7 +394,7 @@ export default class LeaveOfAbsence {
     const settings = interaction.client.settings.get(interaction.guild);
     const loaRoleId = settings?.loa?.role;
 
-    Permissions.require(
+    interaction.client.permissions.require(
       interaction.member,
       "command",
       `You need Command permissions to ${action} LOA requests.`,

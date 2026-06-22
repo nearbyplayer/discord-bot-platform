@@ -7,7 +7,6 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { captureException } from "./Sentry.js";
-import db from "#db";
 
 const memberFetchTimestamps = new Map();
 const memberFetchPromises = new Map();
@@ -106,11 +105,11 @@ export async function clearReply(interaction, content, embeds = [], components =
 }
 
 /**
- * Shared embed color choices for slash command options.
- * @param {{includeDept: boolean}?} options
+ * Shared, generic embed color choices for slash command options. Domain-specific
+ * palettes (e.g. the department `Dept` color) are layered on by the owning feature.
  */
-export function getEmbedColorChoices({ includeDept = false } = {}) {
-  const choices = [
+export function getEmbedColorChoices() {
+  return [
     { name: "green", value: "Green" },
     { name: "blue", value: "Blue" },
     { name: "yellow", value: "Yellow" },
@@ -135,12 +134,6 @@ export function getEmbedColorChoices({ includeDept = false } = {}) {
     { name: "light_grey", value: "LightGrey" },
     { name: "dark_navy", value: "DarkNavy" },
   ];
-
-  if (includeDept) {
-    choices.push({ name: "dept", value: "Dept" });
-  }
-
-  return choices;
 }
 
 /**
@@ -266,39 +259,6 @@ export async function sendUserDM(client, userId, message, { logPrefix = "" } = {
   }
 }
 
-/**
- * Post an embed to the action_log_channel channel (if configured).
- * @param {Guild} guild - Discord guild instance
- * @param {Object} settings - Guild settings object
- * @param {EmbedBuilder} embed - Embed to post
- * @param {Object} options - Configuration options
- * @param {boolean} options.throwOnError - If true, throws on failure; if false, silently ignores (default: false)
- * @returns {Promise<Message|null>} - Returns the sent message or null on failure
- */
-export async function postToDeptLog(guild, settings, embed, { throwOnError = false } = {}) {
-  if (!settings.action_log_channel) {
-    return null;
-  }
-
-  try {
-    const channel = await guild.channels.fetch(settings.action_log_channel).catch(() => null);
-    if (!channel) {
-      if (throwOnError) {
-        throw new Error("action_log_channel channel not found or inaccessible");
-      }
-      return null;
-    }
-
-    const message = await channel.send({ embeds: [embed] });
-    return message;
-  } catch (error) {
-    if (throwOnError) {
-      throw error;
-    }
-    return null;
-  }
-}
-
 export async function ensureGuildMembersCached(guild, { force = false } = {}) {
   const hasFetched = memberFetchTimestamps.has(guild.id);
   // A gateway reconnect rebuilds the guild from a partial GUILD_CREATE payload,
@@ -356,10 +316,13 @@ export async function close(client) {
     captureException(e, { module: "Util", function: "close" });
   }
 
-  try {
-    await db.close();
-  } catch (e) {
-    captureException(e, { module: "Util", function: "close" });
+  // Run registered teardown hooks (e.g. the db connection's close) in sequence.
+  for (const hook of client.shutdownHooks ?? []) {
+    try {
+      await hook();
+    } catch (e) {
+      captureException(e, { module: "Util", function: "close" });
+    }
   }
 
   process.exit(0);

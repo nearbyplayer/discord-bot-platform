@@ -1,4 +1,4 @@
-import { buildSettingsModel } from "#db/settings";
+import { buildSettingsModel } from "./schema.js";
 import { captureException } from "#modules/Sentry";
 import { ConfigError, DatabaseError } from "#src/errors";
 
@@ -23,17 +23,13 @@ export default class Settings {
    */
   async initialize() {
     try {
-      const features = this.client.features ?? [];
+      // Merge settings fragments from every loaded manifest (capabilities first,
+      // then features). Feature `migrate` hooks already ran in the kernel ready
+      // sequence, so relocated fields are at their new paths before the cache loads.
+      const manifests = [...(this.client.capabilities ?? []), ...(this.client.features ?? [])];
 
-      // Compile the model with feature settings fragments merged in.
-      this.model = buildSettingsModel(features);
-
-      // Run feature data migrations once, before loading settings into cache, so
-      // any relocated fields are read from their new paths. Features own their
-      // own data evolution; base just invokes the generic hook.
-      for (const feature of features) {
-        if (feature.migrate) await feature.migrate();
-      }
+      // Compile the model with manifest settings fragments merged in.
+      this.model = buildSettingsModel(manifests);
 
       const settings = await this.model.find({}).exec();
 
@@ -51,7 +47,7 @@ export default class Settings {
   /**
    * Get settings for a guild.
    * @param {string|import('discord.js').Guild} guild - Guild ID or Guild object
-   * @returns {import('#db/settings')|null} Settings document or null if not found
+   * @returns {import('./schema.js')|null} Settings document or null if not found
    */
   get(guild) {
     const guildId = typeof guild === "string" ? guild : guild.id;
@@ -71,7 +67,7 @@ export default class Settings {
   /**
    * Ensure settings exist for a guild, creating them if necessary.
    * @param {string} guildId - Guild ID
-   * @returns {Promise<import('#db/settings')>} Settings document
+   * @returns {Promise<import('./schema.js')>} Settings document
    */
   async ensure(guildId) {
     if (this.has(guildId)) {

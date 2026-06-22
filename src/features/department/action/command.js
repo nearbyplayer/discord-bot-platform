@@ -2,7 +2,8 @@
 import { Colors, EmbedBuilder, InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 // Modules
-import { clearReply, confirmAction, getEmbedColorChoices } from "#modules/Util";
+import { deptColorChoices } from "../lib/dept.js";
+import { clearReply, confirmAction } from "#modules/Util";
 import { ConfigError } from "#src/errors";
 
 // Command
@@ -324,7 +325,7 @@ export default {
               option
                 .setName("color")
                 .setDescription("What color do you want the embed to be?")
-                .addChoices(...getEmbedColorChoices({ includeDept: true }))
+                .addChoices(...deptColorChoices())
                 .setRequired(true),
             ),
         ),

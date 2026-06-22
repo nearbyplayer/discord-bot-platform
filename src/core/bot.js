@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
 // Modules
-import { loadFeatures } from "#modules/Features";
+import { loadCapabilities, loadFeatures } from "#modules/Features";
 import { close } from "#modules/Util";
 import { botToken } from "#config";
 
@@ -19,6 +19,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Create Discord client with required intents
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+
+// Kernel seams — filled by capabilities/features (see docs/architecture/capability-tier.md).
+// Initialized here so they exist before any interaction or shutdown signal arrives.
+client.gates = []; // interaction preconditions: (interaction, command) => blockMessage | null
+client.shutdownHooks = []; // async teardown callbacks run by close()
+client.permissions = null; // resolver: { has, checkSubcommandPermission, getPermissionError }
 
 // Graceful shutdown handlers
 process.on("SIGTERM", () => close(client));
@@ -31,12 +37,15 @@ for (const file of eventFiles) {
   handler(client);
 }
 
-// Discover features once and register their event handlers. Features attach to
-// the same lifecycle events as the base handlers; ready.js reuses client.features
-// for command and schedule registration. No-ops when there are no features.
+// Discover capabilities and features once and register their event handlers.
+// Capabilities (db/settings/permissions) load first and fill kernel seams in
+// their init hooks; both tiers attach to the same lifecycle events as the base
+// handlers. ready.js reuses these lists for migrate/command/schedule/init
+// registration. No-ops when a tier ships empty.
+client.capabilities = await loadCapabilities();
 client.features = await loadFeatures();
-for (const feature of client.features) {
-  for (const handler of feature.events ?? []) handler(client);
+for (const manifest of [...client.capabilities, ...client.features]) {
+  for (const handler of manifest.events ?? []) handler(client);
 }
 
 // Login to Discord
