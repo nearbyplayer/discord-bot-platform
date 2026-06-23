@@ -1,5 +1,5 @@
 import WLSchema from "./schema.js";
-import { findPlayerInGame } from "#features/ingame/lookup";
+import { findPlayerInGame } from "#apps/department/ingame/lookup";
 import { captureException } from "#modules/Sentry";
 import { DatabaseError, ValidationError } from "#src/errors";
 import { EmbedBuilder } from "discord.js";

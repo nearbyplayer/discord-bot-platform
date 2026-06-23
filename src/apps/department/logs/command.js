@@ -198,6 +198,11 @@ export default {
         )
         .addSubcommand(subcommand =>
           subcommand
+            .setName("list")
+            .setDescription("List every configured log quota and exempt role."),
+        )
+        .addSubcommand(subcommand =>
+          subcommand
             .setName("exempt")
             .setDescription("Exempt a role from log requirements.")
             .addRoleOption(option =>
@@ -224,6 +229,7 @@ export default {
       delete: "employee",
       check: "command",
       stats: "command",
+      list: "command",
       reset: "high_command",
       set: "high_command",
       clear: "high_command",
@@ -245,6 +251,9 @@ export default {
           break;
         case "view":
           await Logs.viewQuota(i);
+          break;
+        case "list":
+          await Logs.listQuotas(i);
           break;
         case "exempt":
           await Logs.exemptRole(i);

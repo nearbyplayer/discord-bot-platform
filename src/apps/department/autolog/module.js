@@ -1,6 +1,6 @@
 import ActiveSchema from "./schema.js";
-import { findInGame } from "#features/ingame/lookup";
-import Logs from "#features/department/logs/module";
+import { findInGame } from "#apps/department/ingame/lookup";
+import Logs from "#apps/department/logs/module";
 import { captureException } from "#modules/Sentry";
 import { clearReply, confirmAction, sendUserDM } from "#modules/Util";
 import { DatabaseError, ValidationError } from "#src/errors";

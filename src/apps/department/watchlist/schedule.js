@@ -1,5 +1,5 @@
 import WLSchema from "./schema.js";
-import { findPlayerInGame } from "#features/ingame/lookup";
+import { findPlayerInGame } from "#apps/department/ingame/lookup";
 import { captureException } from "#modules/Sentry";
 import { pagedEmbed } from "#modules/Util";
 import { ConfigError, UserError } from "#src/errors";

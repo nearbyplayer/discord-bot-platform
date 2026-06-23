@@ -1,19 +1,18 @@
 # Capability tier & nested subfeatures
 
-Status: **in progress** — Phase 1 (kernel seams) ✅ · Phase 2 (extract capabilities) ✅ · Phase 3 (sync rewrite) ✅ · Phase 4 (nested subfeatures) ✅ · Phase 5a (department restructure) ✅ · **Phase 6 (apps/features reframe) — PLANNED, implement next** · Phase 5b (residency + flu) after Phase 6.
+Status: **complete** — Phase 1 (kernel seams) ✅ · Phase 2 (extract capabilities) ✅ · Phase 3 (sync rewrite) ✅ · Phase 4 (nested subfeatures) ✅ · Phase 5a (department restructure) ✅ · Phase 6 (apps/features reframe) ✅. **Phase 5b (residency + flu) CANCELED** — those bots are no longer being migrated onto the shared core; Phase 6 is the terminal architecture.
 
-> Phase 5a complete: loa/logs/pager/action are subfeatures of a `department`
-> parent that installs the ladder (so the `permissions` capability is fully
-> policy-free) and owns `roles` + `action_log_channel` + their `/config` fragments.
-> The settings base schema is now just `guild_id` + `color`. The Phase 2/3
-> transitional notes are resolved. The permission ladder is now a partial-order
-> DAG (IA and Command are separate tracks; see `createLadder`).
+> Phase 6 complete: three tiers are live — capabilities (`src/core/capabilities/`),
+> apps (`src/apps/<app>/`), features (`src/apps/<app>/<feature>/`). Catalog is
+> `apps.json`; alias is `#apps/*`. Features are opt-in: a bare app name resolves to
+> the app shell only; features are pulled individually or via sets ("groups").
+> `ingame` is a manifest-less lib gated as a `department` feature so it ships ONLY
+> to bots whose features import it (`autolog`/`watchlist`), not to every dept bot.
 >
 > NOTE: the sections below this plan use the older "feature/subfeature" vocabulary
-> for the same mechanism that Phase 6 renames to "app/feature". Phase 6 is the
-> authoritative next step.
+> for the same mechanism Phase 6 renamed to "app/feature".
 
-## Phase 6 — capabilities / apps / features (PLAN — implement this next)
+## Phase 6 — capabilities / apps / features (IMPLEMENTED)
 
 Decision (2026-06-21): reframe the top tier as **apps**. Three tiers:
 
@@ -45,21 +44,43 @@ kernel/module dep split are all unchanged.
 3. **Catalog.** Rename `features.json` → `apps.json`:
    ```jsonc
    {
-     "capabilities": { "db": {"requires":[]}, "settings": {"requires":["db"]}, "permissions": {"requires":[]} },
+     "capabilities": {
+       "db": { "requires": [] },
+       "settings": { "requires": ["db"] },
+       "permissions": { "requires": [] },
+     },
      "apps": {
-       "department": { "requires": ["permissions","settings"],
-         "features": { "loa": {}, "logs": {}, "pager": {}, "action": {},
-                       "autolog": { "requires": ["department/logs"] }, "watchlist": {} } },
-       "residency": { "requires": ["permissions","db"], "features": { "badge-walk": {}, "user-info": {} } },
-       "flu": { "requires": ["permissions"] }
+       "department": {
+         "requires": ["permissions", "settings"],
+         "features": {
+           "loa": {},
+           "logs": {},
+           "pager": {},
+           "action": {},
+           "autolog": { "requires": ["department/logs"] },
+           "watchlist": {},
+         },
+       },
+       "residency": {
+         "requires": ["permissions", "db"],
+         "features": { "badge-walk": {}, "user-info": {} },
+       },
+       "flu": { "requires": ["permissions"] },
      },
      "sets": {
-       "department-core": ["department/loa","department/logs","department/pager","department/action"],
-       "ingame-suite":    ["department/autolog","department/watchlist"]
-     }
+       "department-core": [
+         "department/loa",
+         "department/logs",
+         "department/pager",
+         "department/action",
+       ],
+       "ingame-suite": ["department/autolog", "department/watchlist"],
+     },
    }
    ```
-   `ingame` is a lib (ships with the app), NOT a feature — autolog/watchlist depend on it by import, not `requires`.
+   `ingame` is a manifest-less lib (no `index.js` ⇒ the runtime loader skips it), but it IS listed as a
+   `department` feature in `apps.json` so sync gates its copy: `autolog`/`watchlist` `requires` it, so it
+   ships only when one of them is entitled (NOT to every department bot).
 4. **sync (`bin/sync-bot.mjs`).** catalog path `features.json`→`apps.json`, `src/features`→`src/apps`.
    `buildDepGraph`: `catalog.features`→`catalog.apps`, nested `subfeatures`→`features`; partition closure as
    `{capabilities, apps, features}`. **`expandSelection`: remove bare-parent → all-features expansion** (sets still
@@ -71,12 +92,14 @@ kernel/module dep split are all unchanged.
 7. **docs.** Refresh CLAUDE.md to the capabilities/apps/features vocabulary (the broader refresh it already needs).
 
 ### Verify
+
 - lint; `npm run sync -- all` → harrison (department + loa/logs/pager/action), ridgeway (+ autolog/watchlist + ingame lib).
 - generated `src/apps/department/{loa,logs,pager,action,autolog,watchlist,ingame,lib}`; all aliases/cross-imports resolve.
-- a `["department-core"]`-only bot **excludes** autolog/watchlist (selective copy); ingame lib ships with the app (dead if unused — acceptable; note it).
+- a `["department-core"]`-only bot **excludes** autolog/watchlist **and ingame** (ingame is gated behind those features, so a bot without them never ships in-game code).
 - runtime manifest-load + ladder + settings-model checks (as in prior phases).
 
 ### Then Phase 5b (residency + flu) on the apps model
+
 - `src/apps/residency/` app (apply flow in parent + `lib/` Roblox API) + `badge-walk`/`user-info` features; linear ladder; `request` schema; requires `[permissions, db]`. `bots/residency.json`.
 - `src/apps/flu/` feature-less app; 2-level ladder; no db/settings. `bots/flu.json`.
 

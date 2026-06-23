@@ -987,6 +987,34 @@ export default {
           : ""),
     );
   },
+  /**
+   * List every configured quota (activity + special) and exempt role for the
+   * guild. Roles are rendered as mentions, falling back to the stored id if the
+   * role no longer exists.
+   */
+  async listQuotas(i) {
+    const settings = i.client.settings.get(i.guild);
+    const { quota, special_quota, exempt } = settings.logs;
+
+    const role = id => (i.guild.roles.cache.has(id) ? `<@&${id}>` : `\`${id}\``);
+
+    const embed = new EmbedBuilder().setTitle("Log Quotas").setColor(settings.color);
+
+    const activity = Array.from(quota.entries())
+      .map(([id, q]) => `${role(id)} — ${q.count}× ${q.time}min (priority ${q.priority})`)
+      .join("\n");
+    embed.addFields({ name: "Activity Quotas", value: activity || "*None configured.*" });
+
+    const special = Array.from(special_quota.entries())
+      .map(([id, q]) => `${role(id)} — ${q.count}× ${q.time}min special`)
+      .join("\n");
+    embed.addFields({ name: "Special Quotas", value: special || "*None configured.*" });
+
+    const exemptRoles = exempt.map(role).join(", ");
+    embed.addFields({ name: "Exempt Roles", value: exemptRoles || "*None.*" });
+
+    await i.editReply({ embeds: [embed] });
+  },
   async exemptRole(i) {
     const role = i.options.getRole("role");
     const value = i.options.getBoolean("value");

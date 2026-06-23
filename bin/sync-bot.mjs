@@ -17,23 +17,23 @@ import { execFileSync } from "node:child_process";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const catalog = JSON.parse(readFileSync(join(ROOT, "features.json"), "utf8"));
+const catalog = JSON.parse(readFileSync(join(ROOT, "apps.json"), "utf8"));
 const platformPkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 
-// Feature-sets are pure aliases for a bundle of features; a set name must not
-// collide with a feature name, or expansion would be ambiguous.
+// Feature-sets ("groups") are pure aliases for a bundle of features; a set name
+// must not collide with an app name, or expansion would be ambiguous.
 for (const setName of Object.keys(catalog.sets ?? {})) {
-  if (catalog.features[setName]) {
-    throw new Error(`feature-set "${setName}" collides with a feature of the same name`);
+  if (catalog.apps[setName]) {
+    throw new Error(`feature-set "${setName}" collides with an app of the same name`);
   }
 }
 
-// Capabilities and features share the `requires` namespace, so their names must
-// be distinct (and must not collide with a set name) for closure resolution to
-// be unambiguous.
+// Capabilities and apps share the `requires` namespace, so their names must be
+// distinct (and must not collide with a set name) for closure resolution to be
+// unambiguous.
 for (const capName of Object.keys(catalog.capabilities ?? {})) {
-  if (catalog.features[capName]) {
-    throw new Error(`capability "${capName}" collides with a feature of the same name`);
+  if (catalog.apps[capName]) {
+    throw new Error(`capability "${capName}" collides with an app of the same name`);
   }
   if (catalog.sets?.[capName]) {
     throw new Error(`capability "${capName}" collides with a feature-set of the same name`);
@@ -79,9 +79,9 @@ const GENERATED_ROOT_FILES = [
 
 /**
  * Expands any feature-set names in `selected` into their member features.
- * Sets (declared in features.json `sets`) are pure aliases; members may be
- * features or other sets. `path` tracks the current expansion chain to catch
- * cycles while still allowing diamonds (a set referenced via two branches).
+ * Sets (declared in apps.json `sets`) are pure aliases; members may be
+ * features, apps, or other sets. `path` tracks the current expansion chain to
+ * catch cycles while still allowing diamonds (a set referenced via two branches).
  */
 function expandSets(selected, path = new Set()) {
   const sets = catalog.sets ?? {};
@@ -98,23 +98,23 @@ function expandSets(selected, path = new Set()) {
 }
 
 /**
- * Build the dependency graph over capabilities, features, and subfeatures.
- * Features and capabilities share one `requires` namespace. A subfeature is
- * keyed by its canonical "<parent>/<sub>" name and implicitly requires its
- * parent feature, so selecting a subfeature always pulls in its parent.
+ * Build the dependency graph over capabilities, apps, and features.
+ * Apps and capabilities share one `requires` namespace. A feature is keyed by
+ * its canonical "<app>/<feature>" name and implicitly requires its app, so
+ * selecting a feature always pulls in its app (and the app's requires).
  */
 function buildDepGraph() {
   const graph = {};
   for (const [name, def] of Object.entries(catalog.capabilities ?? {})) {
     graph[name] = { kind: "capability", requires: def.requires ?? [] };
   }
-  for (const [name, def] of Object.entries(catalog.features)) {
-    graph[name] = { kind: "feature", requires: def.requires ?? [] };
-    for (const [sub, subDef] of Object.entries(def.subfeatures ?? {})) {
-      graph[`${name}/${sub}`] = {
-        kind: "subfeature",
+  for (const [name, def] of Object.entries(catalog.apps)) {
+    graph[name] = { kind: "app", requires: def.requires ?? [] };
+    for (const [feat, featDef] of Object.entries(def.features ?? {})) {
+      graph[`${name}/${feat}`] = {
+        kind: "feature",
         parent: name,
-        requires: [name, ...(subDef.requires ?? [])],
+        requires: [name, ...(featDef.requires ?? [])],
       };
     }
   }
@@ -124,25 +124,21 @@ function buildDepGraph() {
 const depGraph = buildDepGraph();
 
 /**
- * Expand a selected list into resolvable graph-node names: feature-set aliases
- * are expanded first, then a bare parent-feature name expands to the parent plus
- * ALL its subfeatures ("residency" => parent + every "residency/<sub>"). A
- * "<parent>/<sub>" name is kept as-is (its parent is pulled via the graph).
+ * Expand a selected list into resolvable graph-node names. Feature-set aliases
+ * ("groups") expand to their members; every other name passes through as-is.
+ * Features are opt-in: a bare app name resolves to the app SHELL ONLY (its
+ * ladder/settings, no features) — features must be listed individually
+ * ("department/logs") or pulled via a set. A "<app>/<feature>" name keeps its
+ * form (its app is pulled through the dependency graph).
  */
 function expandSelection(selected) {
-  const out = [];
-  for (const name of expandSets(selected)) {
-    out.push(name);
-    const subs = catalog.features[name]?.subfeatures;
-    if (subs) for (const sub of Object.keys(subs)) out.push(`${name}/${sub}`);
-  }
-  return out;
+  return expandSets(selected);
 }
 
 /**
  * BFS over the dependency graph to return the full transitive closure of a
- * selected set, partitioned into sorted `capabilities`, `features`, and
- * `subfeatures` (canonical "<parent>/<sub>" names). Throws on unknown names.
+ * selected set, partitioned into sorted `capabilities`, `apps`, and `features`
+ * (canonical "<app>/<feature>" names). Throws on unknown names.
  */
 function resolveClosure(selected) {
   const visited = new Set();
@@ -152,7 +148,7 @@ function resolveClosure(selected) {
     const name = queue.shift();
     if (visited.has(name)) continue;
     if (!depGraph[name]) {
-      throw new Error(`unknown feature, subfeature, or capability "${name}"`);
+      throw new Error(`unknown app, feature, or capability "${name}"`);
     }
     visited.add(name);
     for (const dep of depGraph[name].requires) {
@@ -163,8 +159,8 @@ function resolveClosure(selected) {
   const byKind = kind => [...visited].filter(n => depGraph[n].kind === kind).sort();
   return {
     capabilities: byKind("capability"),
+    apps: byKind("app"),
     features: byKind("feature"),
-    subfeatures: byKind("subfeature"),
   };
 }
 
@@ -200,24 +196,24 @@ function sourceUrl(image) {
  * Returns { dest, features } on success, or null if the destination is missing.
  */
 function generate(bot) {
-  const { features, capabilities, subfeatures } = resolveClosure(bot.features);
+  const { apps, capabilities, features } = resolveClosure(bot.features);
 
-  // Selected subfeatures grouped by parent, for the selective copy below.
-  const selectedSubsByParent = {};
-  for (const full of subfeatures) {
-    const [parent, sub] = full.split("/");
-    (selectedSubsByParent[parent] ??= []).push(sub);
+  // Selected features grouped by app, for the selective copy below.
+  const selectedFeatsByApp = {};
+  for (const full of features) {
+    const [app, feat] = full.split("/");
+    (selectedFeatsByApp[app] ??= []).push(feat);
   }
 
-  // Verify every feature/subfeature/capability directory exists before touching anything.
-  for (const f of features) {
-    if (!existsSync(join(ROOT, "src", "features", f))) {
-      throw new Error(`feature directory not found: src/features/${f}`);
+  // Verify every app/feature/capability directory exists before touching anything.
+  for (const a of apps) {
+    if (!existsSync(join(ROOT, "src", "apps", a))) {
+      throw new Error(`app directory not found: src/apps/${a}`);
     }
   }
-  for (const full of subfeatures) {
-    if (!existsSync(join(ROOT, "src", "features", ...full.split("/")))) {
-      throw new Error(`subfeature directory not found: src/features/${full}`);
+  for (const full of features) {
+    if (!existsSync(join(ROOT, "src", "apps", ...full.split("/")))) {
+      throw new Error(`feature directory not found: src/apps/${full}`);
     }
   }
   for (const c of capabilities) {
@@ -249,7 +245,7 @@ function generate(bot) {
 
   // ------------------------------------------------------------------
   // COPY: kernel source (everything in src/core EXCEPT the capability tier),
-  // then only the entitled capabilities, entitled features, and config files.
+  // then only the entitled capabilities, entitled apps/features, and config files.
   // ------------------------------------------------------------------
   const capabilitiesDir = join(ROOT, "src", "core", "capabilities");
   cpSync(join(ROOT, "src", "core"), join(dest, "src", "core"), {
@@ -263,21 +259,17 @@ function generate(bot) {
     });
   }
 
-  for (const f of features) {
-    const featureSrc = join(ROOT, "src", "features", f);
-    const featureDest = join(dest, "src", "features", f);
-    const declaredSubs = Object.keys(catalog.features[f].subfeatures ?? {});
+  for (const a of apps) {
+    const appSrc = join(ROOT, "src", "apps", a);
+    const appDest = join(dest, "src", "apps", a);
+    const declaredFeats = Object.keys(catalog.apps[a].features ?? {});
 
-    if (declaredSubs.length === 0) {
-      cpSync(featureSrc, featureDest, { recursive: true });
-      continue;
-    }
-
-    // Parent feature with subfeatures: copy the parent (index.js, lib/, etc.) but
-    // only the selected subfeature subdirectories; unselected ones are excluded.
-    const selected = selectedSubsByParent[f] ?? [];
-    const excluded = declaredSubs.filter(s => !selected.includes(s)).map(s => join(featureSrc, s));
-    cpSync(featureSrc, featureDest, {
+    // Copy the app shell (index.js, lib/, and any non-feature lib dirs like
+    // ingame — which ship with the app even when nothing entitled uses them)
+    // plus only the selected feature subdirs; unselected features are excluded.
+    const selected = selectedFeatsByApp[a] ?? [];
+    const excluded = declaredFeats.filter(f => !selected.includes(f)).map(f => join(appSrc, f));
+    cpSync(appSrc, appDest, {
       recursive: true,
       filter: src => !excluded.some(ex => src === ex || src.startsWith(ex + sep)),
     });
@@ -292,10 +284,10 @@ function generate(bot) {
   // WRITE package.json
   // ------------------------------------------------------------------
 
-  // Dependency assembly. Capabilities and features may each declare their own
-  // dependencies in a package.json; those are "module-owned". The kernel dep set
-  // is the platform's deps MINUS every module-owned dep, so a dep like mongoose
-  // (owned by the db capability) ships only to bots that entitle it.
+  // Dependency assembly. Capabilities, apps, and features may each declare their
+  // own dependencies in a package.json; those are "module-owned". The kernel dep
+  // set is the platform's deps MINUS every module-owned dep, so a dep like
+  // mongoose (owned by the db capability) ships only to bots that entitle it.
   const readDeps = pkgPath =>
     existsSync(pkgPath) ? (JSON.parse(readFileSync(pkgPath, "utf8")).dependencies ?? {}) : {};
 
@@ -305,17 +297,14 @@ function generate(bot) {
       readDeps(join(ROOT, "src", "core", "capabilities", c, "package.json")),
     ]),
   );
-  const featureDeps = Object.fromEntries(
-    Object.keys(catalog.features).map(f => [
-      f,
-      readDeps(join(ROOT, "src", "features", f, "package.json")),
-    ]),
+  const appDeps = Object.fromEntries(
+    Object.keys(catalog.apps).map(a => [a, readDeps(join(ROOT, "src", "apps", a, "package.json"))]),
   );
-  const subfeatureDeps = {};
-  for (const [name, def] of Object.entries(catalog.features)) {
-    for (const sub of Object.keys(def.subfeatures ?? {})) {
-      subfeatureDeps[`${name}/${sub}`] = readDeps(
-        join(ROOT, "src", "features", name, sub, "package.json"),
+  const featureDeps = {};
+  for (const [name, def] of Object.entries(catalog.apps)) {
+    for (const feat of Object.keys(def.features ?? {})) {
+      featureDeps[`${name}/${feat}`] = readDeps(
+        join(ROOT, "src", "apps", name, feat, "package.json"),
       );
     }
   }
@@ -323,19 +312,19 @@ function generate(bot) {
   const moduleOwnedDepNames = new Set(
     [
       ...Object.values(capabilityDeps),
+      ...Object.values(appDeps),
       ...Object.values(featureDeps),
-      ...Object.values(subfeatureDeps),
     ].flatMap(d => Object.keys(d)),
   );
 
-  // Kernel deps: platform deps not claimed by any capability/feature/subfeature.
+  // Kernel deps: platform deps not claimed by any capability/app/feature.
   const mergedDeps = Object.fromEntries(
     Object.entries(platformPkg.dependencies).filter(([name]) => !moduleOwnedDepNames.has(name)),
   );
-  // Layer in deps for the entitled capabilities, features, and subfeatures.
+  // Layer in deps for the entitled capabilities, apps, and features.
   for (const c of capabilities) Object.assign(mergedDeps, capabilityDeps[c]);
+  for (const a of apps) Object.assign(mergedDeps, appDeps[a]);
   for (const f of features) Object.assign(mergedDeps, featureDeps[f]);
-  for (const s of subfeatures) Object.assign(mergedDeps, subfeatureDeps[s]);
 
   const sortedDeps = Object.fromEntries(
     Object.entries(mergedDeps).sort(([a], [b]) => a.localeCompare(b)),
@@ -434,8 +423,8 @@ README.md
 > Source of truth: the \`discord-bot-platform\` monorepo. Regenerate with \`npm run sync -- ${bot.name}\`.
 > Synced from platform commit \`${sha}\`.
 
-Entitled features: ${features.join(", ")}
-Entitled subfeatures: ${subfeatures.join(", ") || "none"}
+Entitled apps: ${apps.join(", ")}
+Entitled features: ${features.join(", ") || "none"}
 Entitled capabilities: ${capabilities.join(", ") || "none"}
 
 ## Run
@@ -457,9 +446,9 @@ Entitled capabilities: ${capabilities.join(", ") || "none"}
   }
 
   log.ok(
-    `${bot.name} → ${dest}  (caps: ${capabilities.join(", ") || "none"}; features: ${features.join(", ")}${subfeatures.length ? `; subfeatures: ${subfeatures.join(", ")}` : ""})`,
+    `${bot.name} → ${dest}  (caps: ${capabilities.join(", ") || "none"}; apps: ${apps.join(", ")}${features.length ? `; features: ${features.join(", ")}` : ""})`,
   );
-  return { dest, features, capabilities, subfeatures };
+  return { dest, apps, capabilities, features };
 }
 
 // ---------------------------------------------------------------------------

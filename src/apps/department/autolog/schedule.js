@@ -1,7 +1,7 @@
-import { autoLog } from "#features/ingame/config";
+import { autoLog } from "#apps/department/ingame/config";
 import ActiveSchema from "./schema.js";
 import AutoLogs from "./module.js";
-import { findInGame } from "#features/ingame/lookup";
+import { findInGame } from "#apps/department/ingame/lookup";
 import { captureException } from "#modules/Sentry";
 import { DateTime } from "luxon";
 

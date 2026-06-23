@@ -3,7 +3,7 @@
  * Scans a directory of <name>/index.js manifests and returns each one.
  * Subdirectories without an index.js (e.g. shared libraries like `ingame`) are
  * skipped. Used for both the capability tier (src/core/capabilities) and the
- * feature tier (src/features); a missing directory yields [], so base loaders
+ * app/feature tier (src/apps); a missing directory yields [], so base loaders
  * no-op in deployments that ship without that tier.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 
 import { captureException } from "#modules/Sentry";
 
-const featuresPath = join(process.cwd(), "src", "features");
+const appsPath = join(process.cwd(), "src", "apps");
 const capabilitiesPath = join(process.cwd(), "src", "core", "capabilities");
 
 async function importManifest(indexPath, manifests, kind, label) {
@@ -41,9 +41,9 @@ async function loadManifests(basePath, kind, { recurse = false } = {}) {
 
     await importManifest(indexPath, manifests, kind, entry);
 
-    // One level of nested subfeatures: a parent feature's subdirectories that
-    // carry their own index.js load as flat manifests too (lib/ subdirs without
-    // an index are skipped). They flow through every seam like any feature.
+    // One level of nesting: an app's feature subdirectories that carry their own
+    // index.js load as flat manifests too (lib/ subdirs without an index are
+    // skipped). They flow through every seam like any manifest.
     if (!recurse) continue;
     for (const sub of readdirSync(dir)) {
       const subDir = join(dir, sub);
@@ -60,7 +60,7 @@ async function loadManifests(basePath, kind, { recurse = false } = {}) {
 }
 
 export function loadFeatures() {
-  return loadManifests(featuresPath, "feature", { recurse: true });
+  return loadManifests(appsPath, "feature", { recurse: true });
 }
 
 export function loadCapabilities() {

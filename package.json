@@ -1,7 +1,7 @@
 {
   "name": "@nearbyplayer/discord-bot-platform",
   "version": "0.1.0",
-  "description": "Monorepo for the Discord department-bot platform: base framework (src/core) + all features (src/features). Per-bot repos are generated from here by bin/sync-bot.mjs.",
+  "description": "Monorepo for the Discord department-bot platform: kernel (src/core) + capabilities + apps/features (src/apps). Per-bot repos are generated from here by bin/sync-bot.mjs.",
   "main": "src/core/bot.js",
   "type": "module",
   "author": "nearbyplayer",
@@ -21,7 +21,7 @@
     "#modules/*": "./src/core/modules/*.js",
     "#capabilities/*": "./src/core/capabilities/*.js",
     "#config": "./src/core/config.js",
-    "#features/*": "./src/features/*.js"
+    "#apps/*": "./src/apps/*.js"
   },
   "dependencies": {
     "@sentry/node": "^10.58.0",
