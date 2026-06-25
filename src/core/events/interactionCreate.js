@@ -23,7 +23,7 @@ export default client => {
           content: "The bot is still starting up, please try again in a moment.",
           flags: MessageFlags.Ephemeral,
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     // The token may already be expired (gateway lag); if deferring fails,
@@ -38,7 +38,7 @@ export default client => {
 
     if (!command) return interaction.editReply("That command hasn't been set up yet.");
 
-    // Interaction gates — preconditions registered by capabilities/features
+    // Interaction gates - preconditions registered by capabilities/features
     // (e.g. the settings capability's guild-init check). First non-null message blocks.
     for (const gate of interaction.client.gates ?? []) {
       const block = await gate(interaction, command);

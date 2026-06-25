@@ -20,7 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Create Discord client with required intents
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
-// Kernel seams — filled by capabilities/features (see docs/architecture/capability-tier.md).
+// Kernel seams - filled by capabilities/features (see docs/architecture/capability-tier.md).
 // Initialized here so they exist before any interaction or shutdown signal arrives.
 client.gates = []; // interaction preconditions: (interaction, command) => blockMessage | null
 client.shutdownHooks = []; // async teardown callbacks run by close()

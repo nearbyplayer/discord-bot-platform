@@ -37,7 +37,7 @@ async function loadManifests(basePath, kind, { recurse = false } = {}) {
     if (!statSync(dir).isDirectory()) continue;
 
     const indexPath = join(dir, "index.js");
-    if (!existsSync(indexPath)) continue; // shared lib (no index, e.g. ingame) — skip
+    if (!existsSync(indexPath)) continue; // shared lib (no index, e.g. ingame) - skip
 
     await importManifest(indexPath, manifests, kind, entry);
 

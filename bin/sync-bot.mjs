@@ -127,7 +127,7 @@ const depGraph = buildDepGraph();
  * Expand a selected list into resolvable graph-node names. Feature-set aliases
  * ("groups") expand to their members; every other name passes through as-is.
  * Features are opt-in: a bare app name resolves to the app SHELL ONLY (its
- * ladder/settings, no features) — features must be listed individually
+ * ladder/settings, no features) - features must be listed individually
  * ("department/logs") or pulled via a set. A "<app>/<feature>" name keeps its
  * form (its app is pulled through the dependency graph).
  */
@@ -231,7 +231,7 @@ function generate(bot) {
   }
 
   if (!existsSync(join(dest, ".git"))) {
-    log.warn(`${dest} is not a git repo — continuing anyway`);
+    log.warn(`${dest} is not a git repo - continuing anyway`);
   }
 
   // ------------------------------------------------------------------
@@ -265,7 +265,7 @@ function generate(bot) {
     const declaredFeats = Object.keys(catalog.apps[a].features ?? {});
 
     // Copy the app shell (index.js, lib/, and any non-feature lib dirs like
-    // ingame — which ship with the app even when nothing entitled uses them)
+    // ingame - which ship with the app even when nothing entitled uses them)
     // plus only the selected feature subdirs; unselected features are excluded.
     const selected = selectedFeatsByApp[a] ?? [];
     const excluded = declaredFeats.filter(f => !selected.includes(f)).map(f => join(appSrc, f));

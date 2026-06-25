@@ -1,8 +1,8 @@
 # Capability tier & nested subfeatures
 
-Status: **complete** — Phase 1 (kernel seams) ✅ · Phase 2 (extract capabilities) ✅ · Phase 3 (sync rewrite) ✅ · Phase 4 (nested subfeatures) ✅ · Phase 5a (department restructure) ✅ · Phase 6 (apps/features reframe) ✅. **Phase 5b (residency + flu) CANCELED** — those bots are no longer being migrated onto the shared core; Phase 6 is the terminal architecture.
+Status: **complete** - Phase 1 (kernel seams) ✅ · Phase 2 (extract capabilities) ✅ · Phase 3 (sync rewrite) ✅ · Phase 4 (nested subfeatures) ✅ · Phase 5a (department restructure) ✅ · Phase 6 (apps/features reframe) ✅. **Phase 5b (residency + flu) CANCELED** - those bots are no longer being migrated onto the shared core; Phase 6 is the terminal architecture.
 
-> Phase 6 complete: three tiers are live — capabilities (`src/core/capabilities/`),
+> Phase 6 complete: three tiers are live - capabilities (`src/core/capabilities/`),
 > apps (`src/apps/<app>/`), features (`src/apps/<app>/<feature>/`). Catalog is
 > `apps.json`; alias is `#apps/*`. Features are opt-in: a bare app name resolves to
 > the app shell only; features are pulled individually or via sets ("groups").
@@ -12,17 +12,17 @@ Status: **complete** — Phase 1 (kernel seams) ✅ · Phase 2 (extract capabili
 > NOTE: the sections below this plan use the older "feature/subfeature" vocabulary
 > for the same mechanism Phase 6 renamed to "app/feature".
 
-## Phase 6 — capabilities / apps / features (IMPLEMENTED)
+## Phase 6 - capabilities / apps / features (IMPLEMENTED)
 
 Decision (2026-06-21): reframe the top tier as **apps**. Three tiers:
 
-- **capabilities** (`src/core/capabilities/`): `db`, `settings`, `permissions` — platform plumbing.
-- **apps** (`src/apps/<app>/`): `department`, `residency`, `flu` — deployable products. An app's `index.js` is the parent manifest (installs its ladder via `createLadder`, owns app-wide settings/config). Shared code in app `lib/` dirs (no `index.js` ⇒ not a feature).
+- **capabilities** (`src/core/capabilities/`): `db`, `settings`, `permissions` - platform plumbing.
+- **apps** (`src/apps/<app>/`): `department`, `residency`, `flu` - deployable products. An app's `index.js` is the parent manifest (installs its ladder via `createLadder`, owns app-wide settings/config). Shared code in app `lib/` dirs (no `index.js` ⇒ not a feature).
 - **features** (`src/apps/<app>/<feature>/`): units within an app (`loa`, `logs`, `autolog`, `badge-walk`, …), each individually selectable. Canonical name `"<app>/<feature>"`.
 
 **Selection model** (per user): a bot does NOT inherently get all of an app's
-features. Features are opt-in — listed individually (`"department/logs"`) or
-bundled via **groups** (sets). No core/optional flag — "core" is just a group you
+features. Features are opt-in - listed individually (`"department/logs"`) or
+bundled via **groups** (sets). No core/optional flag - "core" is just a group you
 choose. So bare `"department"` resolves to the **app shell only** (ladder +
 settings, no features); features are pulled explicitly or via sets (each feature
 pulls its app parent through the dependency graph). A feature-less app (flu) is
@@ -114,11 +114,11 @@ This document describes a planned restructuring of the platform into three tiers
 lightweight bots that previously copy-pasted the core can run on the shared
 framework. The two driving cases are:
 
-- `../harrison-automation/residency-bot` — a Roblox residency-application bot:
+- `../harrison-automation/residency-bot` - a Roblox residency-application bot:
   an apply flow + a shared Roblox API layer + semi-independent `/residency`,
   `/badge_walk`, `/user_info` commands. Uses **static config**, its **own**
   permission ladder, and the DB only for a `request` schema.
-- `../ridgeway-automation/rsp-flu-bot` — an AFL (firearm-license) bot: webhook
+- `../ridgeway-automation/rsp-flu-bot` - an AFL (firearm-license) bot: webhook
   submission processing + modals + forum-thread logging + Google Sheets sync.
   **No database**, owner/role checks only.
 
@@ -142,18 +142,18 @@ what every bot needs.
 ## Tiers
 
 ```
-src/core/                 KERNEL — always present, no DB, no domain policy
+src/core/                 KERNEL - always present, no DB, no domain policy
   bot.js                    client, event/feature loaders, seam initialization
   events/                   ready, interactionCreate, guildDelete (shells)
   modules/                  ErrorHandler, Sentry, Util, Features, ladder factory? (see below)
   config.js                 clientId, botToken, owners, nodeEnv, game  (NO mongo)
-  capabilities/             CAPABILITY TIER — opt-in, resolved via requires/closure
+  capabilities/             CAPABILITY TIER - opt-in, resolved via requires/closure
     db/                       Mongo connection; owns `mongo`; provides #db
     settings/                 requires db; settings model + Settings module +
                               buildSettingsModel + guild-init gate + /config command
     permissions/              requires []; policy-free: createLadder + resolver
                               plumbing + reusable settings-role helper
-src/features/             FEATURE TIER — domain capability
+src/features/             FEATURE TIER - domain capability
   department/               parent-feature: installs the dept ladder
     loa/ logs/ pager/ action/   subfeatures
     lib/                        postToDeptLog, dept color choices
@@ -177,49 +177,49 @@ no DB/settings/permissions code:
 | Today                                                                          | Seam                                                                                                                         | Filled by                                      |
 | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `ready.js` imports `Settings`, `Settings.initialize()` runs migrate internally | kernel runs **migrate** hooks in the ready sequence, then capability `init` in `requires` order                              | settings cap `init` builds model + loads cache |
-| `interactionCreate.js` imports `Permissions`                                   | `client.permissions` resolver — `{ has, checkSubcommandPermission, getPermissionError }`; base calls `client.permissions?.…` | permissions cap, or a feature's own `init`     |
-| `interactionCreate.js` reads `client.settings.has(guild)`                      | `client.gates = []` — each gate `(interaction, command) => blockMessage \| null`                                             | settings cap pushes the guild-init gate        |
+| `interactionCreate.js` imports `Permissions`                                   | `client.permissions` resolver - `{ has, checkSubcommandPermission, getPermissionError }`; base calls `client.permissions?.…` | permissions cap, or a feature's own `init`     |
+| `interactionCreate.js` reads `client.settings.has(guild)`                      | `client.gates = []` - each gate `(interaction, command) => blockMessage \| null`                                             | settings cap pushes the guild-init gate        |
 | `Util.close()` imports `#db`                                                   | `client.shutdownHooks = []`                                                                                                  | db cap pushes `() => db.close()`               |
 
 The permission resolver is intentionally **duck-typed**, so heterogeneous
 permission models coexist across bots. `getRoleIds` is evaluated **lazily per
 interaction**, so the permissions capability needs no ordering dependency on
-settings — it just asks "is `client.settings` here right now?".
+settings - it just asks "is `client.settings` here right now?".
 
 ## Policy-free permissions + `createLadder`
 
 `createLadder({ levels, getRoleIds })` lives in the **`permissions` capability**
-(`requires: []`, DB-free). It bakes the two **universal** top tiers — owner
-(from `#config` `owners`) and Discord `Administrator` — above the injected
+(`requires: []`, DB-free). It bakes the two **universal** top tiers - owner
+(from `#config` `owners`) and Discord `Administrator` - above the injected
 `levels`. The capability ships **only** the factory, the resolver/gate plumbing,
 and a reusable settings-role helper. It **names no tiers and installs no ladder**.
 
-Each bot installs its own ladder (fully symmetric — no privileged default):
+Each bot installs its own ladder (fully symmetric - no privileged default):
 
 ```js
 // getRoleIds: settings-backed when settings present, else static config
 const getRoleIds = (m, key) => m.client.settings?.get(m.guild)?.roles?.[key] ?? STATIC?.[key];
 ```
 
-- **department** — the `department` parent-feature installs the dept ladder in
+- **department** - the `department` parent-feature installs the dept ladder in
   `init` with settings-backed roles, and owns the `roles` settings fragment +
   `/config roles`. (Absorbs the formerly-separate "department-permissions".)
-- **residency** — own 5-level ladder + static `#config` roles, installed in the
+- **residency** - own 5-level ladder + static `#config` roles, installed in the
   residency feature `init`.
-- **flu** — own 2-level ladder `{ flu: 1, owner: 2 }` + static roles. Slash
+- **flu** - own 2-level ladder `{ flu: 1, owner: 2 }` + static roles. Slash
   commands use declarative `permissions: "flu"`; button accept/deny handlers
   call `client.permissions.has(m, "flu")` directly (buttons bypass the command
   path).
 
 "DB functionality of permissions" is precisely **the per-guild role→tier mapping
-stored in the settings document, editable via `/config roles`** — nothing else.
+stored in the settings document, editable via `/config roles`** - nothing else.
 It's an optional, auto-detected enhancement, not a requirement.
 
 ## `db` / `settings` capabilities
 
-- **db** — owns the Mongo connection; `mongo` moves out of `src/core/config.js`
+- **db** - owns the Mongo connection; `mongo` moves out of `src/core/config.js`
   into here; `#db` repoints here; pushes the shutdown hook.
-- **settings** — `requires: [db]`. Owns the settings model + `Settings` module +
+- **settings** - `requires: [db]`. Owns the settings model + `Settings` module +
   `buildSettingsModel` + the guild-init gate + the **relocated `/config`
   command** (a feature `config` fragment is a settings write, so it's meaningless
   without settings). Base subcommands narrow to `reload`/`init`/`edit`. **The
@@ -229,12 +229,12 @@ It's an optional, auto-detected enhancement, not a requirement.
 
 ## Nested subfeatures
 
-Runtime is nearly free: `loadFeatures()` recurses **one level** — for each
+Runtime is nearly free: `loadFeatures()` recurses **one level** - for each
 feature dir, scan its subdirs for `index.js` (dirs without one, e.g. `lib/`,
 skip themselves, exactly as `ingame` does). Subfeature manifests join the flat
 list and flow through every existing seam unchanged.
 
-The hierarchy lives in **directory layout + `features.json` + sync selection** —
+The hierarchy lives in **directory layout + `features.json` + sync selection** -
 deliberately invisible to the settings model and `/config`:
 
 - **Subfeature settings**: flat merge (treated identically to feature fragments,
@@ -304,15 +304,15 @@ ridgeway adds `"ingame-suite"`.
 
 ## Sequencing
 
-1. **Kernel seams** (this change) — add the four seams; existing
+1. **Kernel seams** (this change) - add the four seams; existing
    Settings/Permissions are wired _through_ them, no behavior change. Verify
    ridgeway + harrison still sync + boot.
-2. **Extract capabilities** — move db/settings/permissions into
+2. **Extract capabilities** - move db/settings/permissions into
    `src/core/capabilities/`; repoint aliases; move `mongo`, `roles`, `/config`.
-3. **Sync rewrite** — capability closure + selective copy + per-cap deps.
-4. **Nested subfeatures** — loader recursion + `features.json` hierarchy +
+3. **Sync rewrite** - capability closure + selective copy + per-cap deps.
+4. **Nested subfeatures** - loader recursion + `features.json` hierarchy +
    selection syntax + selective subfeature copy.
-5. **Migrations** — department restructure (move loa/logs/pager/action under
+5. **Migrations** - department restructure (move loa/logs/pager/action under
    `department/`, relocate helpers) + residency (+ subfeatures) + flu.
 
 Steps 1–2 are verifiable against the existing two bots before any new bot is
@@ -320,7 +320,7 @@ touched.
 
 ## Known limitation
 
-A generated bot has exactly **one** `client.permissions` — perfect for every
+A generated bot has exactly **one** `client.permissions` - perfect for every
 real bot. Only the all-features monorepo dev-run could see multiple features race
 to set it (last-write-wins). Documented and accepted; no real bot mixes the
 residency/flu families with department features.

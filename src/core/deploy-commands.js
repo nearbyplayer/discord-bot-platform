@@ -34,7 +34,7 @@ const resolveData = command => command.data ?? command.build(manifests);
 
 const commands = [];
 
-// Kernel commands, if any (the kernel may ship none — /config lives in a capability).
+// Kernel commands, if any (the kernel may ship none - /config lives in a capability).
 const commandsPath = join(process.cwd(), "src", "core", "commands");
 if (existsSync(commandsPath)) {
   const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith(".js"));

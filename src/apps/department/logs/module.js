@@ -368,7 +368,7 @@ export default {
       const prefix = embed.data.description ? `${embed.data.description}\n` : "";
       embed.setDescription(
         prefix +
-          `${self ? "You have" : "This user has"} **${met >= unitQuota.count ? "met" : "not met"}** the special log quota for ${role.name}.`,
+        `${self ? "You have" : "This user has"} **${met >= unitQuota.count ? "met" : "not met"}** the special log quota for ${role.name}.`,
       );
     }
 
@@ -707,7 +707,7 @@ export default {
     if (date < startOfWeek || date > endOfWeek) {
       throw new ValidationError(
         `Logs must be from the current week (${startOfWeek.toFormat("M/d")} - ${endOfWeek.toFormat("M/d")}). ` +
-          `You entered ${date.toFormat("M/d/yyyy")}.`,
+        `You entered ${date.toFormat("M/d/yyyy")}.`,
       );
     }
 
@@ -808,7 +808,7 @@ export default {
     // Post to logs channel (non-critical, silently fail)
     if (gc.logs.channel) {
       const channel = await i.guild.channels.fetch(gc.logs.channel).catch(() => null);
-      if (channel) await channel.send({ embeds: [embed] }).catch(() => {});
+      if (channel) await channel.send({ embeds: [embed] }).catch(() => { });
     }
 
     try {
@@ -858,7 +858,7 @@ export default {
     // Post to logs channel (non-critical, silently fail)
     if (settings.logs.channel) {
       const channel = await i.guild.channels.fetch(settings.logs.channel).catch(() => null);
-      if (channel) await channel.send({ embeds: [embed] }).catch(() => {});
+      if (channel) await channel.send({ embeds: [embed] }).catch(() => { });
     }
 
     try {
@@ -946,8 +946,8 @@ export default {
 
     await i.editReply(
       `Successfully set ${isSpecial ? "special " : ""}quota for **${unit.name}** with parameters: \`count: ${count}, time: ${time}` +
-        (!isSpecial ? `, priority: ${priority}` : "") +
-        "`.",
+      (!isSpecial ? `, priority: ${priority}` : "") +
+      "`.",
     );
   },
   async clearQuota(i) {
@@ -982,9 +982,9 @@ export default {
 
     i.editReply(
       `Quota for ${unit.name}: ${quota.count}x ${quota.time} minute logs.` +
-        (special_quota
-          ? `\n\nSpecial Quota for ${unit.name}: ${special_quota.count}x ${special_quota.time} minute special logs.`
-          : ""),
+      (special_quota
+        ? `\n\nSpecial Quota for ${unit.name}: ${special_quota.count}x ${special_quota.time} minute special logs.`
+        : ""),
     );
   },
   /**
@@ -1001,12 +1001,12 @@ export default {
     const embed = new EmbedBuilder().setTitle("Log Quotas").setColor(settings.color);
 
     const activity = Array.from(quota.entries())
-      .map(([id, q]) => `${role(id)} — ${q.count}× ${q.time}min (priority ${q.priority})`)
+      .map(([id, q]) => `${role(id)} - ${q.count}x ${q.time}min (priority ${q.priority})`)
       .join("\n");
     embed.addFields({ name: "Activity Quotas", value: activity || "*None configured.*" });
 
     const special = Array.from(special_quota.entries())
-      .map(([id, q]) => `${role(id)} — ${q.count}× ${q.time}min special`)
+      .map(([id, q]) => `${role(id)} - ${q.count}x ${q.time}min special`)
       .join("\n");
     embed.addFields({ name: "Special Quotas", value: special || "*None configured.*" });
 
