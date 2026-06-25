@@ -1,17 +1,18 @@
 /**
  * Deploy Commands Manager
  * Reads BOT_TOKEN and CLIENT_ID from environment (via .env in the bot's root).
- * Commands are loaded from <cwd>/src/core/commands - run this from the bot's root directory.
+ * Commands come from every loaded manifest (capabilities + apps/features) plus any
+ * kernel commands - run this from the bot's root directory. Mirrors ready.js.
  */
 import { REST } from "@discordjs/rest";
 import chalk from "chalk";
 import { Routes } from "discord.js";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 
-import { loadFeatures } from "#modules/Features";
+import { loadCapabilities, loadFeatures } from "#modules/Features";
 
 const botToken = process.env.BOT_TOKEN;
 const clientId = process.env.CLIENT_ID;
@@ -21,25 +22,32 @@ if (!botToken || !clientId) {
   process.exit(1);
 }
 
-// Features are needed before building base commands: a command may export
-// `build(features)` instead of a static `data` when its shape depends on the
-// loaded features (e.g. the config assembler).
+// Manifests (capabilities + apps/features) are needed before building commands:
+// a command may export `build(manifests)` instead of a static `data` when its
+// shape depends on the loaded manifests (e.g. the /config assembler, shipped by
+// the settings capability). Resolve that seam the same way ready.js does.
+const capabilities = await loadCapabilities();
 const features = await loadFeatures();
+const manifests = [...capabilities, ...features];
 
-const commandsPath = join(process.cwd(), "src", "core", "commands");
-const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith(".js"));
+const resolveData = command => command.data ?? command.build(manifests);
+
 const commands = [];
 
-for (const file of commandFiles) {
-  const { default: command } = await import(pathToFileURL(join(commandsPath, file)).href);
-  const data = command.data ?? command.build(features);
-  commands.push(data.toJSON());
+// Kernel commands, if any (the kernel may ship none — /config lives in a capability).
+const commandsPath = join(process.cwd(), "src", "core", "commands");
+if (existsSync(commandsPath)) {
+  const commandFiles = readdirSync(commandsPath).filter(file => file.endsWith(".js"));
+  for (const file of commandFiles) {
+    const { default: command } = await import(pathToFileURL(join(commandsPath, file)).href);
+    commands.push(resolveData(command).toJSON());
+  }
 }
 
-// Include feature-provided commands so they deploy alongside the base set.
-for (const feature of features) {
-  for (const command of feature.commands ?? []) {
-    commands.push(command.data.toJSON());
+// Include manifest-provided commands (capabilities + features) so they deploy together.
+for (const manifest of manifests) {
+  for (const command of manifest.commands ?? []) {
+    commands.push(resolveData(command).toJSON());
   }
 }
 
